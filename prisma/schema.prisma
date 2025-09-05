@@ -1,0 +1,385 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String   @id @default(uuid())
+  email             String   @unique
+  firstName         String
+  lastName          String
+  avatar            String?
+  bio               String?
+  hourlyRate        Float?
+  location          String?
+  timezone          String?
+  role              String   @default("FREELANCER") // FREELANCER, CLIENT, ADMIN
+  isEmailVerified   Boolean  @default(false)
+  isOnline          Boolean  @default(false)
+  lastSeen          DateTime @default(now())
+  
+  // Authentication
+  passwordHash      String
+  
+  // Client-specific fields
+  companyName       String?
+  companySize       String?
+  
+  // Profile & Social
+  website           String?
+  github            String?
+  linkedin          String?
+  portfolioData     String?  // JSON string
+  
+  // Ratings & Reviews
+  averageRating     Float    @default(0)
+  totalReviews      Int      @default(0)
+  totalEarnings     Float    @default(0)
+  totalSpent        Float    @default(0)
+  
+  // Relationships
+  refreshTokens     RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
+  skills            UserSkill[]
+  languages         UserLanguage[]
+  tasksCreated      Task[]   @relation("TaskCreator")
+  tasksWorking      Task[]   @relation("TaskFreelancer")
+  bids              Bid[]
+  sentMessages      Message[] @relation("MessageSender")
+  notifications     Notification[]
+  paymentsReceived  Payment[] @relation("PaymentReceiver")
+  paymentsMade      Payment[] @relation("PaymentSender")
+  reviewsGiven      Review[] @relation("ReviewAuthor")
+  reviewsReceived   Review[] @relation("ReviewRecipient")
+  savedSearches     SavedSearch[]
+  favoriteTasks     Task[]   @relation("FavoriteTasks")
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("users")
+}
+
+// Separate table for user skills
+model UserSkill {
+  id     String @id @default(uuid())
+  userId String
+  skill  String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, skill])
+  @@map("user_skills")
+}
+
+// Separate table for user languages
+model UserLanguage {
+  id       String @id @default(uuid())
+  userId   String
+  language String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, language])
+  @@map("user_languages")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@map("refresh_tokens")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@map("password_reset_tokens")
+}
+
+model Task {
+  id             String       @id @default(uuid())
+  title          String
+  description    String
+  category       String       // WEB_DEVELOPMENT, MOBILE_DEVELOPMENT, etc.
+  budget         Float?
+  budgetType     String       @default("fixed") // "fixed" or "hourly"
+  timeline       Int?         // in days
+  deadline       DateTime?
+  status         String       @default("DRAFT") // DRAFT, PUBLISHED, IN_PROGRESS, etc.
+  
+  // Relationships
+  clientId       String
+  client         User         @relation("TaskCreator", fields: [clientId], references: [id])
+  freelancerId   String?
+  freelancer     User?        @relation("TaskFreelancer", fields: [freelancerId], references: [id])
+  
+  // Task details
+  views          Int          @default(0)
+  isUrgent       Boolean      @default(false)
+  isFeatured     Boolean      @default(false)
+  
+  // Related data
+  skills         TaskSkill[]
+  attachments    TaskAttachment[]
+  bids           Bid[]
+  milestones     Milestone[]
+  messages       Message[]
+  payments       Payment[]
+  reviews        Review[]
+  files          TaskFile[]
+  
+  // Favorites
+  favoritedBy    User[]       @relation("FavoriteTasks")
+  
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@map("tasks")
+}
+
+// Separate table for task skills
+model TaskSkill {
+  id     String @id @default(uuid())
+  taskId String
+  skill  String
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  
+  @@unique([taskId, skill])
+  @@map("task_skills")
+}
+
+// Separate table for task attachments
+model TaskAttachment {
+  id       String @id @default(uuid())
+  taskId   String
+  filename String
+  url      String
+  task     Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  
+  @@map("task_attachments")
+}
+
+model Bid {
+  id           String    @id @default(uuid())
+  amount       Float
+  coverLetter  String
+  timeline     Int       // in days
+  status       String    @default("PENDING") // PENDING, ACCEPTED, REJECTED, WITHDRAWN
+  
+  // Relationships
+  taskId       String
+  task         Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  freelancerId String
+  freelancer   User      @relation(fields: [freelancerId], references: [id])
+  
+  // Bid details
+  milestonesData String? // JSON string for proposed milestones
+  attachments    BidAttachment[]
+  
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([taskId, freelancerId])
+  @@map("bids")
+}
+
+// Separate table for bid attachments
+model BidAttachment {
+  id       String @id @default(uuid())
+  bidId    String
+  filename String
+  url      String
+  bid      Bid    @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  
+  @@map("bid_attachments")
+}
+
+model Milestone {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  amount      Float
+  dueDate     DateTime?
+  isCompleted Boolean  @default(false)
+  completedAt DateTime?
+  
+  // Relationships
+  taskId      String
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  payments    Payment[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("milestones")
+}
+
+model Message {
+  id         String      @id @default(uuid())
+  content    String
+  type       String      @default("TEXT") // TEXT, FILE, SYSTEM
+  
+  // Relationships
+  senderId   String
+  sender     User        @relation("MessageSender", fields: [senderId], references: [id])
+  taskId     String?
+  task       Task?       @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  
+  // Message details
+  attachments MessageAttachment[]
+  isRead     Boolean     @default(false)
+  readAt     DateTime?
+  
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  @@map("messages")
+}
+
+// Separate table for message attachments
+model MessageAttachment {
+  id        String @id @default(uuid())
+  messageId String
+  filename  String
+  url       String
+  message   Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  
+  @@map("message_attachments")
+}
+
+model Payment {
+  id              String        @id @default(uuid())
+  amount          Float
+  platformFee     Float         @default(0)
+  netAmount       Float         // amount - platformFee
+  currency        String        @default("USD")
+  status          String        @default("PENDING") // PENDING, ESCROW, RELEASED, etc.
+  paymentMethod   String        @default("STRIPE") // STRIPE, PAYPAL
+  
+  // External payment IDs
+  stripePaymentIntentId String?
+  stripeChargeId        String?
+  paypalOrderId         String?
+  
+  // Relationships
+  taskId         String
+  task           Task          @relation(fields: [taskId], references: [id])
+  senderId       String        // Client who pays
+  sender         User          @relation("PaymentSender", fields: [senderId], references: [id])
+  receiverId     String        // Freelancer who receives
+  receiver       User          @relation("PaymentReceiver", fields: [receiverId], references: [id])
+  milestoneId    String?
+  milestone      Milestone?    @relation(fields: [milestoneId], references: [id])
+  
+  // Payment details
+  description    String?
+  metadataString String?       // JSON string
+  escrowReleaseDate DateTime?
+  
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@map("payments")
+}
+
+model Review {
+  id           String @id @default(uuid())
+  rating       Int    // 1-5 stars
+  comment      String?
+  
+  // Relationships
+  taskId       String
+  task         Task   @relation(fields: [taskId], references: [id])
+  authorId     String
+  author       User   @relation("ReviewAuthor", fields: [authorId], references: [id])
+  recipientId  String
+  recipient    User   @relation("ReviewRecipient", fields: [recipientId], references: [id])
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([taskId, authorId])
+  @@map("reviews")
+}
+
+model TaskFile {
+  id       String @id @default(uuid())
+  filename String
+  originalName String
+  mimeType String
+  size     Int
+  url      String
+  
+  // Relationships
+  taskId   String
+  task     Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+
+  @@map("task_files")
+}
+
+model Notification {
+  id        String             @id @default(uuid())
+  type      String             // NEW_TASK, NEW_BID, BID_ACCEPTED, etc.
+  title     String
+  message   String
+  isRead    Boolean            @default(false)
+  metadataString String?        // JSON string
+  
+  // Relationships
+  userId    String
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime           @default(now())
+  readAt    DateTime?
+
+  @@map("notifications")
+}
+
+model SavedSearch {
+  id       String @id @default(uuid())
+  name     String
+  query    String
+  filtersString String // JSON string
+  
+  // Relationships
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("saved_searches")
+}
+
+model Analytics {
+  id              String   @id @default(uuid())
+  date            DateTime @default(now())
+  totalUsers      Int      @default(0)
+  totalTasks      Int      @default(0)
+  totalPayments   Float    @default(0)
+  platformRevenue Float    @default(0)
+  newSignups      Int      @default(0)
+  tasksCompleted  Int      @default(0)
+  
+  createdAt       DateTime @default(now())
+
+  @@unique([date])
+  @@map("analytics")
+}
